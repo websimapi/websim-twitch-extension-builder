@@ -1,6 +1,39 @@
-import { appState } from './state.js';
+import { appState, setCurrentSelection } from './state.js';
 import { snapToGrid, notifyProjectChanged } from './utils.js';
 import { applyWrapperLayout, updateAlignmentGuides, applySnap, hideAlignmentGuides } from './layout.js';
+
+export function addDeleteHandle(wrapper) {
+    if (wrapper.querySelector('.delete-handle')) return;
+
+    const btn = document.createElement('div');
+    btn.className = 'delete-handle';
+    btn.title = "Delete Component";
+    btn.innerHTML = '<i class="fas fa-trash"></i>';
+
+    // Stop propagation so clicking delete doesn't drag/select the wrapper underneath
+    btn.addEventListener('mousedown', (e) => e.stopPropagation());
+    btn.addEventListener('touchstart', (e) => e.stopPropagation());
+    
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (confirm('Delete this component?')) {
+            if (appState.currentSelection === wrapper) {
+                setCurrentSelection(null);
+            }
+            wrapper.remove();
+            
+            // Check for empty state
+            const canvas = document.getElementById('panel-canvas');
+            if (canvas && canvas.querySelectorAll('.element-wrapper').length === 0) {
+                const es = canvas.querySelector('.empty-state');
+                if (es) es.style.display = 'block';
+            }
+            notifyProjectChanged();
+        }
+    });
+
+    wrapper.appendChild(btn);
+}
 
 export function addResizeHandles(wrapper) {
     if (wrapper.querySelector('.resize-handle')) return;

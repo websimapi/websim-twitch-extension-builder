@@ -20,6 +20,7 @@ export function setCurrentView(viewId) {
 
 export function setCurrentSelection(el) {
     appState.currentSelection = el;
+    window.dispatchEvent(new Event('selectionChanged'));
 }
 
 export function incrementId() {

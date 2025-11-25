@@ -1,4 +1,4 @@
-import { appState, incrementId } from './state.js';
+import { appState, incrementId, setCurrentSelection } from './state.js';
 import { applyWrapperLayout } from './layout.js';
 import { addResizeHandles, addDragAndResizeHandlers } from './interactions.js';
 import { notifyProjectChanged, isValidWebSimUrl } from './utils.js';
@@ -92,9 +92,18 @@ export function renderElementToCanvas(type, props, canvas, onEdit) {
     if (appState.currentMode === 'interact') wrapper.classList.add('interact-mode');
 
     wrapper.addEventListener('click', (e) => {
+        if (appState.currentMode === 'interact') return;
         if (e.target.classList.contains('resize-handle')) return;
+        
+        e.stopPropagation(); // Prevent canvas background click (deselect)
+
+        // Visual selection logic
+        const all = canvas.querySelectorAll('.element-wrapper');
+        all.forEach(el => el.classList.remove('selected'));
+        wrapper.classList.add('selected');
+        setCurrentSelection(wrapper);
+
         if (appState.currentMode === 'edit') {
-            e.stopPropagation();
             if (onEdit) onEdit(wrapper);
         }
     });
