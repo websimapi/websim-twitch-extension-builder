@@ -2,6 +2,7 @@ import { scrollBehaviourDragImageTranslateOverride } from 'mobile-drag-drop/scro
 import { polyfill } from 'mobile-drag-drop';
 import { setupExport } from './exportExtension.js';
 import { setupServerDownload } from './serverDownload.js';
+import { setupLiveSync } from './liveSync.js';
 
 // Initialize drag and drop polyfill for mobile
 polyfill({
@@ -33,6 +34,26 @@ const btnExport = document.getElementById('btn-export-extension');
 const btnServer = document.getElementById('btn-download-server');
 const emptyState = canvas.querySelector('.empty-state');
 const canvasLabel = document.querySelector('.canvas-label');
+const liveStatusEl = document.getElementById('live-status');
+
+// --- Live status UI ---
+
+function setLiveStatus(state) {
+    if (!liveStatusEl) return;
+    liveStatusEl.classList.remove('connecting', 'connected', 'disconnected');
+    liveStatusEl.classList.add(state);
+
+    const labelEl = liveStatusEl.querySelector('.label');
+    if (!labelEl) return;
+
+    if (state === 'connecting') {
+        labelEl.textContent = 'Connecting…';
+    } else if (state === 'connected') {
+        labelEl.textContent = 'Live';
+    } else {
+        labelEl.textContent = 'Offline';
+    }
+}
 
 // --- View Switching ---
 
@@ -379,4 +400,19 @@ setupExport({
 
 setupServerDownload({
     btnServer
+});
+
+// Live sync to local Node server (if running)
+setupLiveSync({
+    getViewsSnapshot: () => {
+        // Always capture the latest DOM state before sending
+        saveCurrentViewState();
+        return views;
+    },
+    onStatusChange: (state) => {
+        // state: 'connecting' | 'connected' | 'disconnected' | 'error'
+        if (state === 'connecting') setLiveStatus('connecting');
+        else if (state === 'connected') setLiveStatus('connected');
+        else setLiveStatus('disconnected');
+    }
 });
