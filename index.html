@@ -46,7 +46,17 @@
                     <button class="view-tab" data-view="overlay">Overlay</button>
                     <button class="view-tab" data-view="config">Config</button>
                 </div>
-                <div class="canvas-label">Twitch Panel Preview (320px width)</div>
+                <!-- Canvas header with height controls only -->
+                <div class="canvas-header">
+                    <div class="panel-height-control" id="panel-height-control">
+                        <button class="panel-height-btn" data-height="100">100px</button>
+                        <button class="panel-height-btn" data-height="300">300px</button>
+                        <button class="panel-height-btn" data-height="500">500px</button>
+                        <div class="panel-height-custom">
+                            <input id="panel-height-custom-input" type="number" min="100" max="500" placeholder="Custom">
+                        </div>
+                    </div>
+                </div>
                 <!-- The Drop Zone -->
                 <div id="panel-canvas" class="twitch-panel">
                     <div class="empty-state">Drag items here</div>

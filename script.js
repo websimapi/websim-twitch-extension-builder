@@ -15,7 +15,7 @@ let nextId = 1;
 
 // View State Management
 export const views = {
-    panel: { id: 'panel', label: 'Panel', filename: 'panel.html', type: 'panel', elements: [] },
+    panel: { id: 'panel', label: 'Panel', filename: 'panel.html', type: 'panel', elements: [], height: 300 },
     mobile: { id: 'mobile', label: 'Mobile', filename: 'mobile.html', type: 'mobile', elements: [] },
     component: { id: 'component', label: 'Video Component', filename: 'video_component.html', type: 'component', elements: [] },
     overlay: { id: 'overlay', label: 'Video Overlay', filename: 'video_overlay.html', type: 'video_overlay', elements: [] },
@@ -33,8 +33,10 @@ const btnDeleteElem = document.getElementById('delete-element');
 const btnExport = document.getElementById('btn-export-extension');
 const btnServer = document.getElementById('btn-download-server');
 const emptyState = canvas.querySelector('.empty-state');
-const canvasLabel = document.querySelector('.canvas-label');
 const liveStatusEl = document.getElementById('live-status');
+const panelHeightControl = document.getElementById('panel-height-control');
+const panelHeightButtons = panelHeightControl ? panelHeightControl.querySelectorAll('.panel-height-btn') : [];
+const panelHeightCustomInput = document.getElementById('panel-height-custom-input');
 
 // --- Live status UI ---
 
@@ -53,6 +55,79 @@ function setLiveStatus(state) {
     } else {
         labelEl.textContent = 'Offline';
     }
+}
+
+// Apply initial panel height to canvas and height control
+if (panelHeightControl) {
+    const initialHeight = views.panel.height || 300;
+    canvas.style.height = `${initialHeight}px`;
+
+    // Set active preset button or custom value
+    let matchedPreset = false;
+    panelHeightButtons.forEach(btn => {
+        const btnHeight = parseInt(btn.dataset.height, 10);
+        if (btnHeight === initialHeight) {
+            btn.classList.add('active');
+            matchedPreset = true;
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    if (!matchedPreset && panelHeightCustomInput) {
+        panelHeightCustomInput.value = String(initialHeight);
+    }
+}
+
+// Handle preset height button clicks
+panelHeightButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+        const value = parseInt(btn.dataset.height, 10);
+        const clamped = Math.min(500, Math.max(100, isNaN(value) ? 300 : value));
+        views.panel.height = clamped;
+        if (currentView === 'panel') {
+            canvas.style.height = `${clamped}px`;
+        }
+
+        // Update active state
+        panelHeightButtons.forEach(b => b.classList.toggle('active', b === btn));
+
+        // Clear custom input since a preset is chosen
+        if (panelHeightCustomInput) {
+            panelHeightCustomInput.value = '';
+        }
+
+        // Notify live sync because this affects the panel view
+        notifyProjectChanged();
+    });
+});
+
+// Handle custom height input (on blur or Enter)
+if (panelHeightCustomInput) {
+    const applyCustomHeight = () => {
+        const raw = parseInt(panelHeightCustomInput.value, 10);
+        if (isNaN(raw)) return;
+        const clamped = Math.min(500, Math.max(100, raw));
+        views.panel.height = clamped;
+        panelHeightCustomInput.value = String(clamped);
+
+        if (currentView === 'panel') {
+            canvas.style.height = `${clamped}px`;
+        }
+
+        // Deactivate preset buttons
+        panelHeightButtons.forEach(b => b.classList.remove('active'));
+
+        notifyProjectChanged();
+    };
+
+    panelHeightCustomInput.addEventListener('blur', applyCustomHeight);
+    panelHeightCustomInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            applyCustomHeight();
+            panelHeightCustomInput.blur();
+        }
+    });
 }
 
 // --- View Switching ---
@@ -84,7 +159,7 @@ function switchView(viewId) {
         t.classList.toggle('active', t.dataset.view === viewId);
     });
 
-    // 5. Update Canvas Mode & Label
+    // 5. Update Canvas Mode
     updateCanvasMode(viewId);
 
     // 6. Restore Elements to DOM
@@ -123,25 +198,36 @@ function renderCurrentView() {
 
 function updateCanvasMode(viewId) {
     // Reset classes
-    canvas.className = 'twitch-panel'; 
+    canvas.className = 'twitch-panel';
+    // Reset explicit height; we'll reapply for panel view
+    canvas.style.height = '';
+
+    // Toggle panel height control visibility
+    if (panelHeightControl) {
+        if (viewId === 'panel') {
+            panelHeightControl.classList.remove('hidden');
+        } else {
+            panelHeightControl.classList.add('hidden');
+        }
+    }
     
     switch(viewId) {
         case 'panel':
-            canvasLabel.textContent = 'Twitch Panel Preview (320px width)';
+            // Apply saved panel height (100–500px)
+            {
+                const h = views.panel.height || 300;
+                canvas.style.height = `${h}px`;
+            }
             break;
         case 'mobile':
-            canvasLabel.textContent = 'Mobile Preview (320px width)';
             break;
         case 'component':
-            canvasLabel.textContent = 'Video Component (Resizable)';
             canvas.classList.add('component-mode');
             break;
         case 'overlay':
-            canvasLabel.textContent = 'Video Overlay (16:9 Fullscreen)';
             canvas.classList.add('overlay-mode');
             break;
         case 'config':
-            canvasLabel.textContent = 'Configuration Page (Full Width)';
             canvas.classList.add('config-mode');
             break;
     }

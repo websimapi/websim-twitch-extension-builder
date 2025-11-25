@@ -113,20 +113,94 @@ body {
     width: 100%;
 }
 
-.canvas-label {
-    font-size: 0.8rem;
+/* Canvas header row (height selector only) */
+.canvas-header {
+    width: 100%;
+    max-width: var(--panel-width);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+/* Panel height control */
+.panel-height-control {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
     color: var(--text-secondary);
 }
 
+.panel-height-control.hidden {
+    display: none;
+}
+
+/* New height buttons */
+.panel-height-btn {
+    background-color: var(--dark-surface);
+    color: var(--text-secondary);
+    border: 1px solid var(--dark-border);
+    border-radius: 999px;
+    padding: 4px 8px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+    /* match custom input width */
+    min-width: 80px;
+    text-align: center;
+}
+
+.panel-height-btn.active {
+    background-color: var(--twitch-purple);
+    color: #ffffff;
+    border-color: var(--twitch-purple);
+}
+
+.panel-height-btn:hover {
+    background-color: rgba(255,255,255,0.06);
+    color: var(--text-primary);
+}
+
+/* Custom height input */
+.panel-height-custom input {
+    width: auto;
+    min-width: 80px;
+    background-color: var(--dark-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--dark-border);
+    border-radius: 999px;
+    padding: 4px 8px;
+    font-size: 0.7rem;
+    text-align: center;
+}
+
+/* Remove default number input spinners for better "Custom" label visibility */
+.panel-height-custom input::-webkit-outer-spin-button,
+.panel-height-custom input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.panel-height-custom input[type=number] {
+    -moz-appearance: textfield;
+}
+
+/* Canvas */
 .twitch-panel {
     width: var(--panel-width);
-    min-height: 300px;
+    min-height: 100px;
+    max-height: 500px;
+    /* Default height; JS will override for panel view */
+    height: 300px;
     background-color: var(--canvas-bg);
     border: 2px dashed var(--dark-border);
     border-radius: 4px;
     padding: 10px;
     position: relative;
     transition: border-color 0.2s;
+    overflow-y: auto;
 }
 
 /* View Modes */

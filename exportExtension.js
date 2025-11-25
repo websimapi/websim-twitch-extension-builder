@@ -67,6 +67,9 @@ document.querySelectorAll('.teb-btn').forEach(btn => {
 });
         `;
 
+        // Derive panel height from current view settings (fallback to 300)
+        const panelHeight = (views.panel && views.panel.height) ? views.panel.height : 300;
+
         // 4. Manifest
         const manifest = {
             "name": "My DragDrop Extension",
@@ -76,7 +79,7 @@ document.querySelectorAll('.teb-btn').forEach(btn => {
             "views": {
                 "panel": {
                     "viewer_url": "panel.html",
-                    "height": 300,
+                    "height": panelHeight,
                     "can_link_external_content": false
                 },
                 "mobile": {
