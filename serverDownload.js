@@ -2,6 +2,78 @@ import JSZip from 'jszip';
 import saveAs from 'file-saver';
 import forge from 'node-forge';
 
+const cssTemplate = `/* Universal CSS Reset: Targets every element to zero out all spacing */
+* {
+    margin: 0 !important;
+    padding: 0;
+    box-sizing: border-box !important;
+}
+
+/* Ensure the main root elements are also explicitly zeroed out */
+body, html {
+    overflow: hidden; /* Keep this to prevent scrollbars */
+    width: 320px; /* Fixed Twitch panel width */
+    height: 100%;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+body {
+    background-color: #0e0e10;
+    color: white;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-size: 16px;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+}
+#app {
+    position: relative;
+    width: 320px; /* Match fixed panel width */
+    max-width: 320px;
+    min-height: 100px;
+    margin: 0 auto;
+}
+.teb-wrapper {
+    position: absolute;
+    box-sizing: border-box;
+}
+.teb-btn {
+    border: none;
+    padding: 8px 16px !important;
+    border-radius: 4px;
+    width: 100%;
+    cursor: pointer;
+    font-weight: 600;
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1.5;
+    transition: opacity 0.2s;
+}
+.teb-btn:hover { opacity: 0.9; }
+.teb-text { line-height: 1.4; }
+.teb-image { max-width: 100%; height: auto; display: block; border-radius: 4px; }
+.teb-divider { width: 100%; height: 1px; }
+.teb-container { border-radius: 4px; height: 100%; min-height: 20px; box-sizing: border-box; }`;
+
+const jsTemplate = `window.twitch = window.Twitch.ext;
+
+twitch.onContext((context) => {
+    console.log('Context:', context);
+});
+
+twitch.onAuthorized((auth) => {
+    console.log('Authorized:', auth);
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.teb-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            console.log('Button clicked:', btn.textContent);
+        });
+    });
+});`;
+
 export function setupServerDownload({ btnServer }) {
     btnServer.addEventListener('click', () => {
         // UI Feedback
@@ -93,17 +165,18 @@ function generateHTMLForView(view) {
     const elementsHTML = (view.elements || []).map(el => {
         const type = el.type;
         const data = el.props || {};
+        const layout = getLayoutStyle(data);
         switch(type) {
             case 'text':
-                return \`<div class="teb-text" style="color:\${data.color};font-size:\${data.size};text-align:\${data.align};">\${escapeHtml(data.text || '')}</div>\`;
+                return \`<div class="teb-wrapper" style="\${layout}"><div class="teb-text" style="color:\${escapeAttribute(data.color)};font-size:\${escapeAttribute(data.size)};text-align:\${escapeAttribute(data.align)};">\${escapeHtml(data.text || '')}</div></div>\`;
             case 'button':
-                return \`<button class="teb-btn" style="background-color:\${data.bgColor};color:\${data.color};">\${escapeHtml(data.label || '')}</button>\`;
+                return \`<div class="teb-wrapper" style="\${layout}"><button class="teb-btn" style="background-color:\${escapeAttribute(data.bgColor)};color:\${escapeAttribute(data.color)};">\${escapeHtml(data.label || '')}</button></div>\`;
             case 'container':
-                return \`<div class="teb-container" style="background-color:\${data.bgColor};padding:\${data.padding};border-radius:\${data.radius};color:#aaa;font-size:0.8rem;text-align:center;border:1px dashed #444;">Container Area</div>\`;
+                return \`<div class="teb-wrapper" style="\${layout}"><div class="teb-container" style="background-color:\${escapeAttribute(data.bgColor)};padding:\${escapeAttribute(data.padding)};border-radius:\${escapeAttribute(data.radius)};color:#adadb8;font-size:13px;text-align:center;border:1px dashed #444;">Container Area</div></div>\`;
             case 'image':
-                return \`<img class="teb-image" src="\${escapeAttribute(data.src || '')}" alt="\${escapeAttribute(data.alt || '')}" />\`;
+                return \`<div class="teb-wrapper" style="\${layout}"><img class="teb-image" src="\${escapeAttribute(data.src || '')}" alt="\${escapeAttribute(data.alt || '')}" /></div>\`;
             case 'divider':
-                return \`<div class="teb-divider" style="background-color:\${data.color};margin:\${data.margin} 0;"></div>\`;
+                return \`<div class="teb-wrapper" style="\${layout}"><div class="teb-divider" style="background-color:\${escapeAttribute(data.color)};margin:\${escapeAttribute(data.margin)} 0;"></div></div>\`;
             default:
                 return '';
         }
@@ -117,7 +190,7 @@ function generateHTMLForView(view) {
     return \`<!DOCTYPE html>
 <html>
 <head>
-    <title>\${view.label}</title>
+    <title>\${escapeHtml(view.label || '')}</title>
     <link rel="stylesheet" href="panel.css">
     \${extraStyle}
 </head>
@@ -129,6 +202,18 @@ function generateHTMLForView(view) {
     <script src="viewer.js"></script>
 </body>
 </html>\`;
+}
+
+function getLayoutStyle(data) {
+    const x = typeof data.x === 'number' ? data.x : 0;
+    const y = typeof data.y === 'number' ? data.y : 0;
+    const w = typeof data.width === 'number' ? data.width : null;
+    const h = typeof data.height === 'number' ? data.height : null;
+
+    let style = \`left:\${x}px;top:\${y}px;\`;
+    if (w !== null) style += \`width:\${w}px;\`;
+    if (h !== null) style += \`height:\${h}px;\`;
+    return style;
 }
 
 function escapeHtml(str) {
@@ -143,51 +228,8 @@ function escapeAttribute(str) {
     return String(str || '').replace(/"/g, '&quot;');
 }
 
-const cssContent = \`body {
-    background-color: #0e0e10;
-    color: white;
-    font-family: system-ui, sans-serif;
-    margin: 0;
-    padding: 10px;
-    overflow-x: hidden;
-}
-#app {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-.teb-btn {
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
-    width: 100%;
-    cursor: pointer;
-    font-weight: 600;
-    transition: opacity 0.2s;
-}
-.teb-btn:hover { opacity: 0.9; }
-.teb-text { line-height: 1.4; }
-.teb-image { max-width: 100%; height: auto; display: block; border-radius: 4px; }
-.teb-divider { width: 100%; height: 1px; }
-.teb-container { border-radius: 4px; }\`;
-
-const jsContent = \`window.twitch = window.Twitch.ext;
-
-twitch.onContext((context) => {
-    console.log('Context:', context);
-});
-
-twitch.onAuthorized((auth) => {
-    console.log('Authorized:', auth);
-});
-
-document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('.teb-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            console.log('Button clicked:', btn.textContent);
-        });
-    });
-});\`;
+const cssContent = ${JSON.stringify(cssTemplate)};
+const jsContent = ${JSON.stringify(jsTemplate)};
 
 const manifest = {
     "name": "My DragDrop Extension",

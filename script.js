@@ -3,168 +3,58 @@ import { polyfill } from 'mobile-drag-drop';
 import { setupExport } from './exportExtension.js';
 import { setupServerDownload } from './serverDownload.js';
 import { setupLiveSync } from './liveSync.js';
+import { appState, views, setCurrentView, setCurrentSelection } from './state.js';
+import { notifyProjectChanged } from './utils.js';
+import { renderElementToCanvas, addElement } from './rendering.js';
+import { setupPropertiesModal, openModal, closeModal } from './properties.js';
 
 // Initialize drag and drop polyfill for mobile
 polyfill({
     dragImageTranslateOverride: scrollBehaviourDragImageTranslateOverride
 });
 
-// State
-let currentSelection = null;
-let nextId = 1;
-
-// View State Management
-export const views = {
-    panel: { id: 'panel', label: 'Panel', filename: 'panel.html', type: 'panel', elements: [], height: 300 },
-    mobile: { id: 'mobile', label: 'Mobile', filename: 'mobile.html', type: 'mobile', elements: [] },
-    component: { id: 'component', label: 'Video Component', filename: 'video_component.html', type: 'component', elements: [] },
-    overlay: { id: 'overlay', label: 'Video Overlay', filename: 'video_overlay.html', type: 'video_overlay', elements: [] },
-    config: { id: 'config', label: 'Config', filename: 'config.html', type: 'config', elements: [] }
-};
-export let currentView = 'panel';
-
 // DOM Elements
 const canvas = document.getElementById('panel-canvas');
-const modal = document.getElementById('property-modal');
-const propertyForm = document.getElementById('property-form');
-const btnCloseModal = document.getElementById('close-modal');
-const btnSaveProps = document.getElementById('save-properties');
-const btnDeleteElem = document.getElementById('delete-element');
-const btnExport = document.getElementById('btn-export-extension');
-const btnServer = document.getElementById('btn-download-server');
-const emptyState = canvas.querySelector('.empty-state');
-const liveStatusEl = document.getElementById('live-status');
 const panelHeightControl = document.getElementById('panel-height-control');
-const panelHeightButtons = panelHeightControl ? panelHeightControl.querySelectorAll('.panel-height-btn') : [];
-const panelHeightCustomInput = document.getElementById('panel-height-custom-input');
 
-// --- Live status UI ---
-
-function setLiveStatus(state) {
-    if (!liveStatusEl) return;
-    liveStatusEl.classList.remove('connecting', 'connected', 'disconnected');
-    liveStatusEl.classList.add(state);
-
-    const labelEl = liveStatusEl.querySelector('.label');
-    if (!labelEl) return;
-
-    if (state === 'connecting') {
-        labelEl.textContent = 'Connecting…';
-    } else if (state === 'connected') {
-        labelEl.textContent = 'Live';
-    } else {
-        labelEl.textContent = 'Offline';
-    }
-}
-
-// Apply initial panel height to canvas and height control
-if (panelHeightControl) {
-    const initialHeight = views.panel.height || 300;
-    canvas.style.height = `${initialHeight}px`;
-
-    // Set active preset button or custom value
-    let matchedPreset = false;
-    panelHeightButtons.forEach(btn => {
-        const btnHeight = parseInt(btn.dataset.height, 10);
-        if (btnHeight === initialHeight) {
-            btn.classList.add('active');
-            matchedPreset = true;
-        } else {
-            btn.classList.remove('active');
-        }
-    });
-
-    if (!matchedPreset && panelHeightCustomInput) {
-        panelHeightCustomInput.value = String(initialHeight);
-    }
-}
-
-// Handle preset height button clicks
-panelHeightButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
-        const value = parseInt(btn.dataset.height, 10);
-        const clamped = Math.min(500, Math.max(100, isNaN(value) ? 300 : value));
-        views.panel.height = clamped;
-        if (currentView === 'panel') {
-            canvas.style.height = `${clamped}px`;
-        }
-
-        // Update active state
-        panelHeightButtons.forEach(b => b.classList.toggle('active', b === btn));
-
-        // Clear custom input since a preset is chosen
-        if (panelHeightCustomInput) {
-            panelHeightCustomInput.value = '';
-        }
-
-        // Notify live sync because this affects the panel view
-        notifyProjectChanged();
-    });
-});
-
-// Handle custom height input (on blur or Enter)
-if (panelHeightCustomInput) {
-    const applyCustomHeight = () => {
-        const raw = parseInt(panelHeightCustomInput.value, 10);
-        if (isNaN(raw)) return;
-        const clamped = Math.min(500, Math.max(100, raw));
-        views.panel.height = clamped;
-        panelHeightCustomInput.value = String(clamped);
-
-        if (currentView === 'panel') {
-            canvas.style.height = `${clamped}px`;
-        }
-
-        // Deactivate preset buttons
-        panelHeightButtons.forEach(b => b.classList.remove('active'));
-
-        notifyProjectChanged();
-    };
-
-    panelHeightCustomInput.addEventListener('blur', applyCustomHeight);
-    panelHeightCustomInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            applyCustomHeight();
-            panelHeightCustomInput.blur();
-        }
-    });
-}
+// Initialize Properties Modal
+setupPropertiesModal(
+    document.getElementById('property-modal'),
+    document.getElementById('property-form'),
+    document.getElementById('close-modal'),
+    document.getElementById('save-properties'),
+    document.getElementById('delete-element')
+);
 
 // --- View Switching ---
 
 document.querySelectorAll('.view-tab').forEach(tab => {
     tab.addEventListener('click', () => {
         const viewId = tab.dataset.view;
-        switchView(viewId);
+        if (appState.currentView === viewId) return;
+
+        // Save current view state from DOM
+        saveCurrentViewState();
+
+        // Clear Selection
+        if (appState.currentSelection) {
+            setCurrentSelection(null);
+            closeModal();
+        }
+
+        // Update Active View
+        setCurrentView(viewId);
+        document.querySelectorAll('.view-tab').forEach(t => {
+            t.classList.toggle('active', t.dataset.view === viewId);
+        });
+
+        // Update Canvas Mode
+        updateCanvasMode(viewId);
+
+        // Restore Elements to DOM
+        renderCurrentView();
     });
 });
-
-function switchView(viewId) {
-    if (currentView === viewId) return;
-
-    // 1. Save current view state from DOM
-    saveCurrentViewState();
-
-    // 2. Clear Selection
-    if (currentSelection) {
-        currentSelection = null;
-        closeModal();
-    }
-
-    // 3. Update Active View
-    currentView = viewId;
-
-    // 4. Update UI Tabs
-    document.querySelectorAll('.view-tab').forEach(t => {
-        t.classList.toggle('active', t.dataset.view === viewId);
-    });
-
-    // 5. Update Canvas Mode
-    updateCanvasMode(viewId);
-
-    // 6. Restore Elements to DOM
-    renderCurrentView();
-}
 
 export function saveCurrentViewState() {
     const elements = [];
@@ -175,21 +65,18 @@ export function saveCurrentViewState() {
             props: JSON.parse(wrapper.dataset.props)
         });
     });
-    views[currentView].elements = elements;
+    views[appState.currentView].elements = elements;
 }
 
 function renderCurrentView() {
-    // Clear Canvas
     canvas.innerHTML = '<div class="empty-state">Drag items here</div>';
-    // Re-select empty state since we overwrote innerHTML
     const newEmptyState = canvas.querySelector('.empty-state');
-    
-    const elements = views[currentView].elements;
+    const elements = views[appState.currentView].elements;
 
     if (elements && elements.length > 0) {
         newEmptyState.style.display = 'none';
         elements.forEach(el => {
-            renderElementToCanvas(el.type, el.props);
+            renderElementToCanvas(el.type, el.props, canvas, openModal);
         });
     } else {
         newEmptyState.style.display = 'block';
@@ -197,27 +84,16 @@ function renderCurrentView() {
 }
 
 function updateCanvasMode(viewId) {
-    // Reset classes
     canvas.className = 'twitch-panel';
-    // Reset explicit height; we'll reapply for panel view
     canvas.style.height = '';
 
-    // Toggle panel height control visibility
     if (panelHeightControl) {
-        if (viewId === 'panel') {
-            panelHeightControl.classList.remove('hidden');
-        } else {
-            panelHeightControl.classList.add('hidden');
-        }
+        panelHeightControl.classList.toggle('hidden', viewId !== 'panel');
     }
     
     switch(viewId) {
         case 'panel':
-            // Apply saved panel height (100–500px)
-            {
-                const h = views.panel.height || 300;
-                canvas.style.height = `${h}px`;
-            }
+            canvas.style.height = `${views.panel.height || 300}px`;
             break;
         case 'mobile':
             break;
@@ -233,9 +109,80 @@ function updateCanvasMode(viewId) {
     }
 }
 
+// --- Mode switching ---
+
+document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const mode = btn.dataset.mode;
+        if (mode === appState.currentMode) return;
+        appState.currentMode = mode;
+
+        document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b === btn));
+
+        canvas.querySelectorAll('.element-wrapper').forEach(wrapper => {
+            if (appState.currentMode === 'interact') {
+                wrapper.classList.add('interact-mode');
+            } else {
+                wrapper.classList.remove('interact-mode');
+            }
+        });
+    });
+});
+
+// Snap / Free toggle
+document.querySelectorAll('.snap-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const mode = btn.dataset.snap;
+        appState.snapMode = mode;
+        document.querySelectorAll('.snap-btn').forEach(b => b.classList.toggle('active', b === btn));
+    });
+});
+
+// --- Panel Height Control ---
+
+document.querySelectorAll('.panel-height-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const value = parseInt(btn.dataset.height, 10);
+        const clamped = Math.min(500, Math.max(100, isNaN(value) ? 300 : value));
+        views.panel.height = clamped;
+        if (appState.currentView === 'panel') {
+            canvas.style.height = `${clamped}px`;
+        }
+
+        document.querySelectorAll('.panel-height-btn').forEach(b => b.classList.toggle('active', b === btn));
+        const customInput = document.getElementById('panel-height-custom-input');
+        if (customInput) customInput.value = '';
+        notifyProjectChanged();
+    });
+});
+
+const panelHeightCustomInput = document.getElementById('panel-height-custom-input');
+if (panelHeightCustomInput) {
+    const applyCustomHeight = () => {
+        const raw = parseInt(panelHeightCustomInput.value, 10);
+        if (isNaN(raw)) return;
+        const clamped = Math.min(500, Math.max(100, raw));
+        views.panel.height = clamped;
+        panelHeightCustomInput.value = String(clamped);
+
+        if (appState.currentView === 'panel') {
+            canvas.style.height = `${clamped}px`;
+        }
+        document.querySelectorAll('.panel-height-btn').forEach(b => b.classList.remove('active'));
+        notifyProjectChanged();
+    };
+
+    panelHeightCustomInput.addEventListener('blur', applyCustomHeight);
+    panelHeightCustomInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            applyCustomHeight();
+            panelHeightCustomInput.blur();
+        }
+    });
+}
+
 // --- Drag and Drop Logic ---
 
-// Toolbox items
 document.querySelectorAll('.tool-item').forEach(item => {
     item.addEventListener('dragstart', (e) => {
         e.dataTransfer.setData('type', item.dataset.type);
@@ -243,7 +190,6 @@ document.querySelectorAll('.tool-item').forEach(item => {
     });
 });
 
-// Canvas Drop Zone
 canvas.addEventListener('dragover', (e) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
@@ -259,275 +205,49 @@ canvas.addEventListener('drop', (e) => {
     canvas.classList.remove('drag-over');
     const type = e.dataTransfer.getData('type');
     if (type) {
-        addElement(type);
+        addElement(type, canvas, openModal);
     }
 });
-
-// --- Element Management ---
-
-function addElement(type) {
-    // Hide empty state if present
-    const es = canvas.querySelector('.empty-state');
-    if (es) es.style.display = 'none';
-
-    // Get Defaults
-    const data = getDefaultData(type);
-    
-    // Render
-    renderElementToCanvas(type, data);
-
-    // Notify live sync about the change
-    notifyProjectChanged();
-}
-
-function renderElementToCanvas(type, props) {
-    const id = `el-${nextId++}`;
-    const wrapper = document.createElement('div');
-    wrapper.className = 'element-wrapper';
-    wrapper.dataset.id = id;
-    wrapper.dataset.type = type;
-    wrapper.dataset.props = JSON.stringify(props);
-
-    // Render Content
-    renderElementContent(wrapper, type, props);
-
-    // Click to edit
-    wrapper.addEventListener('click', (e) => {
-        e.stopPropagation();
-        selectElement(wrapper);
-    });
-
-    canvas.appendChild(wrapper);
-}
-
-function getDefaultData(type) {
-    switch(type) {
-        case 'text': return { text: 'Hello Twitch!', color: '#efeff1', size: '16px', align: 'left' };
-        case 'button': return { label: 'Click Me', bgColor: '#9146FF', color: '#ffffff' };
-        case 'container': return { bgColor: '#26262c', padding: '10px', radius: '4px' };
-        case 'image': return { src: 'https://placehold.co/300x150/9146FF/white?text=Image', alt: 'Placeholder' };
-        case 'divider': return { color: '#3a3a3a', margin: '10px' };
-        default: return {};
-    }
-}
-
-export function renderElementContent(wrapper, type, data) {
-    wrapper.innerHTML = ''; // Clear previous
-
-    let content;
-    switch(type) {
-        case 'text':
-            content = document.createElement('div');
-            content.className = 'teb-text';
-            content.textContent = data.text;
-            content.style.color = data.color;
-            content.style.fontSize = data.size;
-            content.style.textAlign = data.align;
-            break;
-        case 'button':
-            content = document.createElement('button');
-            content.className = 'teb-btn';
-            content.textContent = data.label;
-            content.style.backgroundColor = data.bgColor;
-            content.style.color = data.color;
-            break;
-        case 'container':
-            content = document.createElement('div');
-            content.className = 'teb-container';
-            content.style.backgroundColor = data.bgColor;
-            content.style.padding = data.padding;
-            content.style.borderRadius = data.radius;
-            content.textContent = 'Container Area';
-            content.style.color = '#aaa';
-            content.style.fontSize = '0.8rem';
-            content.style.textAlign = 'center';
-            content.style.border = '1px dashed #444';
-            break;
-        case 'image':
-            content = document.createElement('img');
-            content.className = 'teb-image';
-            content.src = data.src;
-            content.alt = data.alt;
-            break;
-        case 'divider':
-            content = document.createElement('div');
-            content.className = 'teb-divider';
-            content.style.backgroundColor = data.color;
-            content.style.marginTop = data.margin;
-            content.style.marginBottom = data.margin;
-            break;
-    }
-
-    if (content) wrapper.appendChild(content);
-}
-
-function selectElement(wrapper) {
-    if (currentSelection) {
-        currentSelection.classList.remove('selected');
-    }
-    currentSelection = wrapper;
-    wrapper.classList.add('selected');
-    openModal();
-}
-
-// --- Modal & Properties ---
-
-function openModal() {
-    if (!currentSelection) return;
-
-    const type = currentSelection.dataset.type;
-    const props = JSON.parse(currentSelection.dataset.props);
-
-    propertyForm.innerHTML = ''; // Clear
-
-    // Build Form based on type
-    if (type === 'text') {
-        addInput(propertyForm, 'Text', 'text', props.text);
-        addInput(propertyForm, 'Color', 'color', props.color);
-        addSelect(propertyForm, 'Size', 'size', props.size, ['12px', '14px', '16px', '20px', '24px']);
-        addSelect(propertyForm, 'Align', 'align', props.align, ['left', 'center', 'right']);
-    } else if (type === 'button') {
-        addInput(propertyForm, 'Label', 'label', props.label);
-        addInput(propertyForm, 'Background', 'bgColor', props.bgColor, 'color');
-        addInput(propertyForm, 'Text Color', 'color', props.color, 'color');
-    } else if (type === 'container') {
-        addInput(propertyForm, 'Background', 'bgColor', props.bgColor, 'color');
-        addInput(propertyForm, 'Padding', 'padding', props.padding);
-        addInput(propertyForm, 'Border Radius', 'radius', props.radius);
-    } else if (type === 'image') {
-        addInput(propertyForm, 'Image URL', 'src', props.src);
-        addInput(propertyForm, 'Alt Text', 'alt', props.alt);
-    } else if (type === 'divider') {
-        addInput(propertyForm, 'Color', 'color', props.color, 'color');
-        addInput(propertyForm, 'Margin', 'margin', props.margin);
-    }
-
-    modal.classList.remove('hidden');
-}
-
-function addInput(parent, label, key, value, type = 'text') {
-    const group = document.createElement('div');
-    group.className = 'form-group';
-    group.innerHTML = `<label>${label}</label>`;
-
-    const input = document.createElement('input');
-    input.type = type;
-    input.value = value;
-    input.dataset.key = key;
-
-    group.appendChild(input);
-    parent.appendChild(group);
-}
-
-function addSelect(parent, label, key, value, options) {
-    const group = document.createElement('div');
-    group.className = 'form-group';
-    group.innerHTML = `<label>${label}</label>`;
-
-    const select = document.createElement('select');
-    select.dataset.key = key;
-    options.forEach(opt => {
-        const option = document.createElement('option');
-        option.value = opt;
-        option.textContent = opt;
-        if (opt === value) option.selected = true;
-        select.appendChild(option);
-    });
-
-    group.appendChild(select);
-    parent.appendChild(group);
-}
-
-function closeModal() {
-    modal.classList.add('hidden');
-}
-
-btnSaveProps.addEventListener('click', () => {
-    if (!currentSelection) return;
-
-    const inputs = propertyForm.querySelectorAll('input, select');
-    const newProps = {};
-
-    inputs.forEach(input => {
-        newProps[input.dataset.key] = input.value;
-    });
-
-    currentSelection.dataset.props = JSON.stringify(newProps);
-    renderElementContent(currentSelection, currentSelection.dataset.type, newProps);
-    closeModal();
-
-    // Notify live sync about the change
-    notifyProjectChanged();
-});
-
-btnDeleteElem.addEventListener('click', () => {
-    if (currentSelection) {
-        currentSelection.remove();
-        currentSelection = null;
-        closeModal();
-        
-        // Check if empty
-        if (canvas.querySelectorAll('.element-wrapper').length === 0) {
-             const es = canvas.querySelector('.empty-state');
-             if (es) es.style.display = 'block';
-        }
-
-        // Notify live sync about the change
-        notifyProjectChanged();
-    }
-});
-
-btnCloseModal.addEventListener('click', closeModal);
-
-// --- Export Extension ---
-// removed inline export extension logic (moved to exportExtension.js)
-
-// --- Server Download ---
-// removed inline server download and SSL generation logic (moved to serverDownload.js)
-
-// Helper to notify live sync that something changed
-function notifyProjectChanged() {
-    window.dispatchEvent(new Event('projectChanged'));
-}
 
 // Initialize modular features
 setupExport({
-    btnExport,
-    views,
-    saveCurrentViewState,
-    renderElementContent
+    btnExport: document.getElementById('btn-export-extension'),
+    saveCurrentViewState
 });
 
 setupServerDownload({
-    btnServer
+    btnServer: document.getElementById('btn-download-server')
 });
 
-// Live sync to local Node server (if running)
+// Initial Height Setup
+const initialHeight = views.panel.height || 300;
+canvas.style.height = `${initialHeight}px`;
+
+// Live sync
 setupLiveSync({
     getViewsSnapshot: () => {
-        // Always capture the latest DOM state before sending
         saveCurrentViewState();
         return views;
     },
     onStatusChange: (state) => {
-        // state: 'connecting' | 'connected' | 'disconnected' | 'error'
-        if (state === 'connecting') setLiveStatus('connecting');
-        else if (state === 'connected') setLiveStatus('connected');
-        else setLiveStatus('disconnected');
+        const liveStatusEl = document.getElementById('live-status');
+        if (!liveStatusEl) return;
+        liveStatusEl.classList.remove('connecting', 'connected', 'disconnected');
+        liveStatusEl.classList.add(state);
+        const labelEl = liveStatusEl.querySelector('.label');
+        if (labelEl) {
+            labelEl.textContent = state === 'connecting' ? 'Connecting…' : (state === 'connected' ? 'Live' : 'Offline');
+        }
     },
     onInitialProjectLoaded: (serverProject) => {
         try {
             if (!serverProject || !serverProject.views) return;
             const serverViews = serverProject.views;
-
-            // Merge server views into local state
             Object.keys(serverViews).forEach((key) => {
                 if (!views[key]) return;
                 const incoming = serverViews[key];
                 views[key].elements = Array.isArray(incoming.elements) ? incoming.elements : [];
             });
-
-            // After loading from server, ensure DOM reflects current view
             renderCurrentView();
         } catch (e) {
             console.error('Error applying initial project from server', e);

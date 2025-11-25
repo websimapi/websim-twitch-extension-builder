@@ -1,8 +1,8 @@
 import JSZip from 'jszip';
 import saveAs from 'file-saver';
-import { views } from './script.js';
+import { views } from './state.js';
 
-export function setupExport({ btnExport, saveCurrentViewState, renderElementContent }) {
+export function setupExport({ btnExport, saveCurrentViewState }) {
     btnExport.addEventListener('click', async () => {
         // Save current view state before exporting to ensure latest changes are captured
         saveCurrentViewState();
@@ -12,39 +12,65 @@ export function setupExport({ btnExport, saveCurrentViewState, renderElementCont
         // 1. Generate HTML for ALL views
         for (const key of Object.keys(views)) {
             const view = views[key];
-            const htmlContent = generateHTMLForView(view, renderElementContent);
+            const htmlContent = generateHTMLForView(view);
             zip.file(view.filename, htmlContent);
         }
 
         // 2. CSS (Shared)
         const cssContent = `
+/* Universal CSS Reset: Targets every element to zero out all spacing */
+* {
+    margin: 0 !important;
+    padding: 0; /* Removed !important to allow component padding to work */
+    box-sizing: border-box !important;
+}
+
+/* Ensure the main root elements are also explicitly zeroed out */
+body, html {
+    overflow: hidden; /* Keep this to prevent scrollbars */
+    width: 320px; /* Fixed Twitch panel width */
+    height: 100%;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
 body {
     background-color: #0e0e10; /* Dark mode base */
     color: white;
-    font-family: system-ui, sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-size: 16px;
     margin: 0;
-    padding: 10px;
+    padding: 0;
     overflow-x: hidden;
 }
 #app {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+    position: relative;
+    width: 320px; /* Match fixed panel width */
+    max-width: 320px;
+    min-height: 100px;
+    margin: 0 auto;
+}
+.teb-wrapper {
+    position: absolute;
+    box-sizing: border-box;
 }
 .teb-btn {
     border: none;
-    padding: 8px 16px;
+    padding: 8px 16px !important;
     border-radius: 4px;
     width: 100%;
     cursor: pointer;
     font-weight: 600;
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1.5;
     transition: opacity 0.2s;
 }
 .teb-btn:hover { opacity: 0.9; }
 .teb-text { line-height: 1.4; }
 .teb-image { max-width: 100%; height: auto; display: block; border-radius: 4px; }
 .teb-divider { width: 100%; height: 1px; }
-.teb-container { border-radius: 4px; }
+.teb-container { border-radius: 4px; height: 100%; box-sizing: border-box; }
         `;
 
         // 3. JS (Shared)
@@ -60,9 +86,11 @@ twitch.onAuthorized((auth) => {
 });
 
 // Add basic interactions
-document.querySelectorAll('.teb-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        console.log('Button clicked:', btn.textContent);
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.teb-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            console.log('Button clicked:', btn.textContent);
+        });
     });
 });
         `;
@@ -110,12 +138,35 @@ document.querySelectorAll('.teb-btn').forEach(btn => {
     });
 }
 
-function generateHTMLForView(view, renderElementContent) {
-    // Generate elements HTML
-    const elementsHTML = view.elements.map(el => {
-        const tempWrapper = document.createElement('div');
-        renderElementContent(tempWrapper, el.type, el.props);
-        return tempWrapper.innerHTML;
+function generateHTMLForView(view) {
+    const elementsHTML = (view.elements || []).map(el => {
+        const type = el.type;
+        const data = el.props || {};
+        const layout = getLayoutStyle(data);
+
+        let inner = '';
+        switch(type) {
+            case 'text':
+                inner = `<div class="teb-text" style="color:${escapeAttr(data.color)};font-size:${escapeAttr(data.size)};text-align:${escapeAttr(data.align)};">${escapeHtml(data.text || '')}</div>`;
+                break;
+            case 'button':
+                inner = `<button class="teb-btn" style="background-color:${escapeAttr(data.bgColor)};color:${escapeAttr(data.color)};">${escapeHtml(data.label || '')}</button>`;
+                break;
+            case 'container':
+                inner = `<div class="teb-container" style="background-color:${escapeAttr(data.bgColor)};padding:${escapeAttr(data.padding)};border-radius:${escapeAttr(data.radius)};color:#adadb8;font-size:13px;text-align:center;border:1px dashed #444;">Container Area</div>`;
+                break;
+            case 'image':
+                inner = `<img class="teb-image" src="${escapeAttr(data.src || '')}" alt="${escapeAttr(data.alt || '')}" />`;
+                break;
+            case 'divider':
+                inner = `<div class="teb-divider" style="background-color:${escapeAttr(data.color)};margin:${escapeAttr(data.margin)} 0;"></div>`;
+                break;
+            default:
+                inner = '';
+        }
+
+        if (!inner) return '';
+        return `<div class="teb-wrapper" style="${layout}">${inner}</div>`;
     }).join('\n');
 
     // Special styles for overlay/component (Transparency)
@@ -127,16 +178,40 @@ function generateHTMLForView(view, renderElementContent) {
     return `<!DOCTYPE html>
 <html>
 <head>
-    <title>${view.label}</title>
+    <title>${escapeHtml(view.label || '')}</title>
     <link rel="stylesheet" href="panel.css">
     ${extraStyle}
 </head>
 <body>
     <div id="app">
-        ${elementsHTML}
+${elementsHTML}
     </div>
     <script src="https://extension-files.twitch.tv/helper/v1/twitch-ext.min.js"></script>
     <script src="viewer.js"></script>
 </body>
 </html>`;
+}
+
+function getLayoutStyle(data) {
+    const x = typeof data.x === 'number' ? data.x : 0;
+    const y = typeof data.y === 'number' ? data.y : 0;
+    const w = typeof data.width === 'number' ? data.width : null;
+    const h = typeof data.height === 'number' ? data.height : null;
+
+    let style = `left:${x}px;top:${y}px;`;
+    if (w !== null) style += `width:${w}px;`;
+    if (h !== null) style += `height:${h}px;`;
+    return style;
+}
+
+function escapeHtml(str) {
+    return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function escapeAttr(str) {
+    return String(str || '').replace(/"/g, '&quot;');
 }
