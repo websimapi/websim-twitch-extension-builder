@@ -11,8 +11,17 @@ polyfill({
 
 // State
 let currentSelection = null;
-let canvasElements = [];
 let nextId = 1;
+
+// View State Management
+const views = {
+    panel: { id: 'panel', label: 'Panel', filename: 'panel.html', type: 'panel', elements: [] },
+    mobile: { id: 'mobile', label: 'Mobile', filename: 'mobile.html', type: 'mobile', elements: [] },
+    component: { id: 'component', label: 'Video Component', filename: 'video_component.html', type: 'component', elements: [] },
+    overlay: { id: 'overlay', label: 'Video Overlay', filename: 'video_overlay.html', type: 'video_overlay', elements: [] },
+    config: { id: 'config', label: 'Config', filename: 'config.html', type: 'config', elements: [] }
+};
+let currentView = 'panel';
 
 // DOM Elements
 const canvas = document.getElementById('panel-canvas');
@@ -24,6 +33,99 @@ const btnDeleteElem = document.getElementById('delete-element');
 const btnExport = document.getElementById('btn-export-extension');
 const btnServer = document.getElementById('btn-download-server');
 const emptyState = canvas.querySelector('.empty-state');
+const canvasLabel = document.querySelector('.canvas-label');
+
+// --- View Switching ---
+
+document.querySelectorAll('.view-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        const viewId = tab.dataset.view;
+        switchView(viewId);
+    });
+});
+
+function switchView(viewId) {
+    if (currentView === viewId) return;
+
+    // 1. Save current view state from DOM
+    saveCurrentViewState();
+
+    // 2. Clear Selection
+    if (currentSelection) {
+        currentSelection = null;
+        closeModal();
+    }
+
+    // 3. Update Active View
+    currentView = viewId;
+
+    // 4. Update UI Tabs
+    document.querySelectorAll('.view-tab').forEach(t => {
+        t.classList.toggle('active', t.dataset.view === viewId);
+    });
+
+    // 5. Update Canvas Mode & Label
+    updateCanvasMode(viewId);
+
+    // 6. Restore Elements to DOM
+    renderCurrentView();
+}
+
+function saveCurrentViewState() {
+    const elements = [];
+    const wrappers = canvas.querySelectorAll('.element-wrapper');
+    wrappers.forEach(wrapper => {
+        elements.push({
+            type: wrapper.dataset.type,
+            props: JSON.parse(wrapper.dataset.props)
+        });
+    });
+    views[currentView].elements = elements;
+}
+
+function renderCurrentView() {
+    // Clear Canvas
+    canvas.innerHTML = '<div class="empty-state">Drag items here</div>';
+    // Re-select empty state since we overwrote innerHTML
+    const newEmptyState = canvas.querySelector('.empty-state');
+    
+    const elements = views[currentView].elements;
+
+    if (elements && elements.length > 0) {
+        newEmptyState.style.display = 'none';
+        elements.forEach(el => {
+            renderElementToCanvas(el.type, el.props);
+        });
+    } else {
+        newEmptyState.style.display = 'block';
+    }
+}
+
+function updateCanvasMode(viewId) {
+    // Reset classes
+    canvas.className = 'twitch-panel'; 
+    
+    switch(viewId) {
+        case 'panel':
+            canvasLabel.textContent = 'Twitch Panel Preview (320px width)';
+            break;
+        case 'mobile':
+            canvasLabel.textContent = 'Mobile Preview (320px width)';
+            break;
+        case 'component':
+            canvasLabel.textContent = 'Video Component (Resizable)';
+            canvas.classList.add('component-mode');
+            break;
+        case 'overlay':
+            canvasLabel.textContent = 'Video Overlay (16:9 Fullscreen)';
+            canvas.classList.add('overlay-mode');
+            break;
+        case 'config':
+            canvasLabel.textContent = 'Configuration Page (Full Width)';
+            canvas.classList.add('config-mode');
+            break;
+    }
+}
 
 // --- Drag and Drop Logic ---
 
@@ -58,20 +160,27 @@ canvas.addEventListener('drop', (e) => {
 // --- Element Management ---
 
 function addElement(type) {
-    if (emptyState) emptyState.style.display = 'none';
+    // Hide empty state if present
+    const es = canvas.querySelector('.empty-state');
+    if (es) es.style.display = 'none';
 
+    // Get Defaults
+    const data = getDefaultData(type);
+    
+    // Render
+    renderElementToCanvas(type, data);
+}
+
+function renderElementToCanvas(type, props) {
     const id = `el-${nextId++}`;
     const wrapper = document.createElement('div');
     wrapper.className = 'element-wrapper';
     wrapper.dataset.id = id;
     wrapper.dataset.type = type;
-
-    // Default Data
-    const data = getDefaultData(type);
-    wrapper.dataset.props = JSON.stringify(data);
+    wrapper.dataset.props = JSON.stringify(props);
 
     // Render Content
-    renderElementContent(wrapper, type, data);
+    renderElementContent(wrapper, type, props);
 
     // Click to edit
     wrapper.addEventListener('click', (e) => {
@@ -244,11 +353,11 @@ btnDeleteElem.addEventListener('click', () => {
         currentSelection.remove();
         currentSelection = null;
         closeModal();
-        if (canvas.children.length === 1) { // only empty state (which is hidden) or actually empty
-             // Check if any elements exist
-             if (canvas.querySelectorAll('.element-wrapper').length === 0) {
-                 if (emptyState) emptyState.style.display = 'block';
-             }
+        
+        // Check if empty
+        if (canvas.querySelectorAll('.element-wrapper').length === 0) {
+             const es = canvas.querySelector('.empty-state');
+             if (es) es.style.display = 'block';
         }
     }
 });
@@ -258,43 +367,19 @@ btnCloseModal.addEventListener('click', closeModal);
 // --- Export Extension ---
 
 btnExport.addEventListener('click', async () => {
+    // Save current view state before exporting to ensure latest changes are captured
+    saveCurrentViewState();
+
     const zip = new JSZip();
 
-    // 1. Generate HTML
-    // Clone canvas to strip wrapper classes
-    const clone = canvas.cloneNode(true);
-    const elements = clone.querySelectorAll('.element-wrapper');
+    // 1. Generate HTML for ALL views
+    for (const key of Object.keys(views)) {
+        const view = views[key];
+        const htmlContent = generateHTMLForView(view);
+        zip.file(view.filename, htmlContent);
+    }
 
-    // Replace wrappers with pure content
-    elements.forEach(el => {
-        const content = el.firstElementChild; // The inner .teb-* element
-        if (content) {
-            el.parentNode.insertBefore(content.cloneNode(true), el);
-        }
-        el.remove();
-    });
-
-    // Remove empty state
-    const empty = clone.querySelector('.empty-state');
-    if (empty) empty.remove();
-
-    const htmlContent = `
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Twitch Extension</title>
-    <link rel="stylesheet" href="panel.css">
-</head>
-<body>
-    <div id="app">
-        ${clone.innerHTML}
-    </div>
-    <script src="https://extension-files.twitch.tv/helper/v1/twitch-ext.min.js"></script>
-    <script src="viewer.js"></script>
-</body>
-</html>`;
-
-    // 2. CSS
+    // 2. CSS (Shared)
     const cssContent = `
 body {
     background-color: #0e0e10; /* Dark mode base */
@@ -325,7 +410,7 @@ body {
 .teb-container { border-radius: 4px; }
     `;
 
-    // 3. JS
+    // 3. JS (Shared)
     const jsContent = `
 window.twitch = window.Twitch.ext;
 
@@ -356,12 +441,26 @@ document.querySelectorAll('.teb-btn').forEach(btn => {
                 "viewer_url": "panel.html",
                 "height": 300,
                 "can_link_external_content": false
+            },
+            "mobile": {
+                "viewer_url": "mobile.html"
+            },
+            "config": {
+                "viewer_url": "config.html"
+            },
+            "component": {
+                "viewer_url": "video_component.html",
+                "aspect_width": 3000,
+                "aspect_height": 2000,
+                "zoom": false
+            },
+            "video_overlay": {
+                "viewer_url": "video_overlay.html"
             }
         },
-        "manifest_version": "0.0.1" // Twitch specific
+        "manifest_version": "0.0.1"
     };
 
-    zip.file("panel.html", htmlContent);
     zip.file("panel.css", cssContent);
     zip.file("viewer.js", jsContent);
     zip.file("manifest.json", JSON.stringify(manifest, null, 2));
@@ -369,6 +468,37 @@ document.querySelectorAll('.teb-btn').forEach(btn => {
     const content = await zip.generateAsync({ type: "blob" });
     saveAs(content, "extension.zip");
 });
+
+function generateHTMLForView(view) {
+    // Generate elements HTML
+    const elementsHTML = view.elements.map(el => {
+        const tempWrapper = document.createElement('div');
+        renderElementContent(tempWrapper, el.type, el.props);
+        return tempWrapper.innerHTML;
+    }).join('\n');
+
+    // Special styles for overlay/component (Transparency)
+    let extraStyle = '';
+    if (view.type === 'video_overlay' || view.type === 'component') {
+        extraStyle = '<style>body { background-color: transparent !important; }</style>';
+    }
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+    <title>${view.label}</title>
+    <link rel="stylesheet" href="panel.css">
+    ${extraStyle}
+</head>
+<body>
+    <div id="app">
+        ${elementsHTML}
+    </div>
+    <script src="https://extension-files.twitch.tv/helper/v1/twitch-ext.min.js"></script>
+    <script src="viewer.js"></script>
+</body>
+</html>`;
+}
 
 // --- Server Download ---
 

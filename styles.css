@@ -128,6 +128,35 @@ body {
     transition: border-color 0.2s;
 }
 
+/* View Modes */
+.twitch-panel.overlay-mode {
+    width: 100%;
+    max-width: 800px;
+    aspect-ratio: 16/9;
+    background-image:
+        linear-gradient(45deg, #1f1f23 25%, transparent 25%),
+        linear-gradient(-45deg, #1f1f23 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #1f1f23 75%),
+        linear-gradient(-45deg, transparent 75%, #1f1f23 75%);
+    background-size: 20px 20px;
+    background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+    background-color: #18181b;
+}
+
+.twitch-panel.config-mode {
+    width: 100%;
+    max-width: 800px;
+    min-height: 500px;
+}
+
+.twitch-panel.component-mode {
+    width: 50%;
+    min-width: 300px;
+    min-height: 300px;
+    resize: horizontal;
+    overflow: hidden;
+}
+
 .twitch-panel.drag-over {
     border-color: var(--twitch-purple);
     background-color: rgba(145, 70, 255, 0.1);
@@ -158,6 +187,41 @@ body {
 .element-wrapper.selected {
     border: 2px solid var(--twitch-purple);
     box-shadow: 0 0 8px rgba(145, 70, 255, 0.3);
+}
+
+/* View Tabs */
+.view-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    background: var(--dark-surface);
+    padding: 4px;
+    border-radius: 8px;
+    border: 1px solid var(--dark-border);
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.view-tab {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.view-tab:hover {
+    background: rgba(255,255,255,0.05);
+    color: var(--text-primary);
+}
+
+.view-tab.active {
+    background: var(--twitch-purple);
+    color: white;
 }
 
 /* Toolbox */
