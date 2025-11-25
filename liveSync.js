@@ -2,29 +2,52 @@
 // to the local Node.js server over a WebSocket connection.
 
 let socket = null;
-let syncInterval = null;
 let reconnectTimeout = null;
 
-export function setupLiveSync({ getViewsSnapshot, onStatusChange }) {
+export function setupLiveSync({ getViewsSnapshot, onStatusChange, onInitialProjectLoaded }) {
     function setStatus(state) {
         if (typeof onStatusChange === 'function') {
             onStatusChange(state);
         }
     }
 
-    function clearSync() {
-        if (syncInterval) {
-            clearInterval(syncInterval);
-            syncInterval = null;
-        }
-    }
-
     function scheduleReconnect() {
-        clearSync();
         if (reconnectTimeout) clearTimeout(reconnectTimeout);
         reconnectTimeout = setTimeout(() => {
             connect();
         }, 3000);
+    }
+
+    function sendSnapshot() {
+        if (!socket || socket.readyState !== WebSocket.OPEN) return;
+        try {
+            const views = getViewsSnapshot();
+            socket.send(JSON.stringify({ type: 'syncProject', views }));
+        } catch (e) {
+            console.error('[LiveSync] Error collecting/sending views', e);
+        }
+    }
+
+    async function loadInitialProject() {
+        const isHttps = window.location.protocol === 'https:';
+        const protocol = isHttps ? 'https' : 'http';
+        const host = 'localhost:8080';
+        const url = `${protocol}://${host}/project.json`;
+
+        try {
+            const res = await fetch(url, { cache: 'no-store' });
+            if (!res.ok) {
+                console.log('[LiveSync] No existing project.json on server');
+                return;
+            }
+            const data = await res.json();
+            if (typeof onInitialProjectLoaded === 'function') {
+                onInitialProjectLoaded(data);
+            }
+            console.log('[LiveSync] Loaded initial project from server');
+        } catch (e) {
+            console.log('[LiveSync] Could not load initial project from server', e);
+        }
     }
 
     function connect() {
@@ -43,31 +66,12 @@ export function setupLiveSync({ getViewsSnapshot, onStatusChange }) {
                 setStatus('connected');
 
                 // Send an immediate snapshot on connect
-                try {
-                    const views = getViewsSnapshot();
-                    socket.send(JSON.stringify({ type: 'syncProject', views }));
-                } catch (e) {
-                    console.error('[LiveSync] Error sending initial views', e);
-                }
-
-                // Start periodic sync
-                clearSync();
-                syncInterval = setInterval(() => {
-                    if (socket && socket.readyState === WebSocket.OPEN) {
-                        try {
-                            const views = getViewsSnapshot();
-                            socket.send(JSON.stringify({ type: 'syncProject', views }));
-                        } catch (e) {
-                            console.error('[LiveSync] Error collecting/sending views', e);
-                        }
-                    }
-                }, 2000); // every 2 seconds
+                sendSnapshot();
             });
 
             socket.addEventListener('close', () => {
                 console.log('[LiveSync] Disconnected from server');
                 setStatus('disconnected');
-                clearSync();
                 scheduleReconnect();
             });
 
@@ -90,6 +94,11 @@ export function setupLiveSync({ getViewsSnapshot, onStatusChange }) {
                     // ignore non-JSON messages
                 }
             });
+
+            // Listen for change events from the builder and send updates on demand
+            window.addEventListener('projectChanged', () => {
+                sendSnapshot();
+            });
         } catch (e) {
             console.error('[LiveSync] Failed to connect', e);
             setStatus('error');
@@ -97,5 +106,8 @@ export function setupLiveSync({ getViewsSnapshot, onStatusChange }) {
         }
     }
 
-    connect();
+    // First try to pull the existing project from the server, then connect
+    loadInitialProject().finally(() => {
+        connect();
+    });
 }

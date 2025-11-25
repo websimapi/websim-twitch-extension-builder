@@ -259,6 +259,13 @@ function handleProjectSync(views) {
         fs.writeFileSync(path.join(process.cwd(), 'viewer.js'), jsContent, 'utf8');
         fs.writeFileSync(path.join(process.cwd(), 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
 
+        // Persist full project state so the builder can load it on startup
+        fs.writeFileSync(
+            path.join(process.cwd(), 'project.json'),
+            JSON.stringify({ views }, null, 2),
+            'utf8'
+        );
+
         console.log('Project written to disk from live editor');
     } catch (e) {
         console.error('Error writing project to disk', e);

@@ -189,6 +189,9 @@ function addElement(type) {
     
     // Render
     renderElementToCanvas(type, data);
+
+    // Notify live sync about the change
+    notifyProjectChanged();
 }
 
 function renderElementToCanvas(type, props) {
@@ -366,6 +369,9 @@ btnSaveProps.addEventListener('click', () => {
     currentSelection.dataset.props = JSON.stringify(newProps);
     renderElementContent(currentSelection, currentSelection.dataset.type, newProps);
     closeModal();
+
+    // Notify live sync about the change
+    notifyProjectChanged();
 });
 
 btnDeleteElem.addEventListener('click', () => {
@@ -379,6 +385,9 @@ btnDeleteElem.addEventListener('click', () => {
              const es = canvas.querySelector('.empty-state');
              if (es) es.style.display = 'block';
         }
+
+        // Notify live sync about the change
+        notifyProjectChanged();
     }
 });
 
@@ -389,6 +398,11 @@ btnCloseModal.addEventListener('click', closeModal);
 
 // --- Server Download ---
 // removed inline server download and SSL generation logic (moved to serverDownload.js)
+
+// Helper to notify live sync that something changed
+function notifyProjectChanged() {
+    window.dispatchEvent(new Event('projectChanged'));
+}
 
 // Initialize modular features
 setupExport({
@@ -414,5 +428,23 @@ setupLiveSync({
         if (state === 'connecting') setLiveStatus('connecting');
         else if (state === 'connected') setLiveStatus('connected');
         else setLiveStatus('disconnected');
+    },
+    onInitialProjectLoaded: (serverProject) => {
+        try {
+            if (!serverProject || !serverProject.views) return;
+            const serverViews = serverProject.views;
+
+            // Merge server views into local state
+            Object.keys(serverViews).forEach((key) => {
+                if (!views[key]) return;
+                const incoming = serverViews[key];
+                views[key].elements = Array.isArray(incoming.elements) ? incoming.elements : [];
+            });
+
+            // After loading from server, ensure DOM reflects current view
+            renderCurrentView();
+        } catch (e) {
+            console.error('Error applying initial project from server', e);
+        }
     }
 });
