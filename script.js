@@ -1,8 +1,7 @@
-import JSZip from 'jszip';
-import saveAs from 'file-saver';
 import { scrollBehaviourDragImageTranslateOverride } from 'mobile-drag-drop/scroll-behaviour';
 import { polyfill } from 'mobile-drag-drop';
-import forge from 'node-forge';
+import { setupExport } from './exportExtension.js';
+import { setupServerDownload } from './serverDownload.js';
 
 // Initialize drag and drop polyfill for mobile
 polyfill({
@@ -14,14 +13,14 @@ let currentSelection = null;
 let nextId = 1;
 
 // View State Management
-const views = {
+export const views = {
     panel: { id: 'panel', label: 'Panel', filename: 'panel.html', type: 'panel', elements: [] },
     mobile: { id: 'mobile', label: 'Mobile', filename: 'mobile.html', type: 'mobile', elements: [] },
     component: { id: 'component', label: 'Video Component', filename: 'video_component.html', type: 'component', elements: [] },
     overlay: { id: 'overlay', label: 'Video Overlay', filename: 'video_overlay.html', type: 'video_overlay', elements: [] },
     config: { id: 'config', label: 'Config', filename: 'config.html', type: 'config', elements: [] }
 };
-let currentView = 'panel';
+export let currentView = 'panel';
 
 // DOM Elements
 const canvas = document.getElementById('panel-canvas');
@@ -71,7 +70,7 @@ function switchView(viewId) {
     renderCurrentView();
 }
 
-function saveCurrentViewState() {
+export function saveCurrentViewState() {
     const elements = [];
     const wrappers = canvas.querySelectorAll('.element-wrapper');
     wrappers.forEach(wrapper => {
@@ -202,7 +201,7 @@ function getDefaultData(type) {
     }
 }
 
-function renderElementContent(wrapper, type, data) {
+export function renderElementContent(wrapper, type, data) {
     wrapper.innerHTML = ''; // Clear previous
 
     let content;
@@ -365,304 +364,19 @@ btnDeleteElem.addEventListener('click', () => {
 btnCloseModal.addEventListener('click', closeModal);
 
 // --- Export Extension ---
-
-btnExport.addEventListener('click', async () => {
-    // Save current view state before exporting to ensure latest changes are captured
-    saveCurrentViewState();
-
-    const zip = new JSZip();
-
-    // 1. Generate HTML for ALL views
-    for (const key of Object.keys(views)) {
-        const view = views[key];
-        const htmlContent = generateHTMLForView(view);
-        zip.file(view.filename, htmlContent);
-    }
-
-    // 2. CSS (Shared)
-    const cssContent = `
-body {
-    background-color: #0e0e10; /* Dark mode base */
-    color: white;
-    font-family: system-ui, sans-serif;
-    margin: 0;
-    padding: 10px;
-    overflow-x: hidden;
-}
-#app {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-.teb-btn {
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
-    width: 100%;
-    cursor: pointer;
-    font-weight: 600;
-    transition: opacity 0.2s;
-}
-.teb-btn:hover { opacity: 0.9; }
-.teb-text { line-height: 1.4; }
-.teb-image { max-width: 100%; height: auto; display: block; border-radius: 4px; }
-.teb-divider { width: 100%; height: 1px; }
-.teb-container { border-radius: 4px; }
-    `;
-
-    // 3. JS (Shared)
-    const jsContent = `
-window.twitch = window.Twitch.ext;
-
-twitch.onContext((context) => {
-    console.log('Context:', context);
-});
-
-twitch.onAuthorized((auth) => {
-    console.log('Authorized:', auth);
-});
-
-// Add basic interactions
-document.querySelectorAll('.teb-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        console.log('Button clicked:', btn.textContent);
-    });
-});
-    `;
-
-    // 4. Manifest
-    const manifest = {
-        "name": "My DragDrop Extension",
-        "version": "0.0.1",
-        "description": "Generated with Twitch Extension Builder",
-        "author": "You",
-        "views": {
-            "panel": {
-                "viewer_url": "panel.html",
-                "height": 300,
-                "can_link_external_content": false
-            },
-            "mobile": {
-                "viewer_url": "mobile.html"
-            },
-            "config": {
-                "viewer_url": "config.html"
-            },
-            "component": {
-                "viewer_url": "video_component.html",
-                "aspect_width": 3000,
-                "aspect_height": 2000,
-                "zoom": false
-            },
-            "video_overlay": {
-                "viewer_url": "video_overlay.html"
-            }
-        },
-        "manifest_version": "0.0.1"
-    };
-
-    zip.file("panel.css", cssContent);
-    zip.file("viewer.js", jsContent);
-    zip.file("manifest.json", JSON.stringify(manifest, null, 2));
-
-    const content = await zip.generateAsync({ type: "blob" });
-    saveAs(content, "extension.zip");
-});
-
-function generateHTMLForView(view) {
-    // Generate elements HTML
-    const elementsHTML = view.elements.map(el => {
-        const tempWrapper = document.createElement('div');
-        renderElementContent(tempWrapper, el.type, el.props);
-        return tempWrapper.innerHTML;
-    }).join('\n');
-
-    // Special styles for overlay/component (Transparency)
-    let extraStyle = '';
-    if (view.type === 'video_overlay' || view.type === 'component') {
-        extraStyle = '<style>body { background-color: transparent !important; }</style>';
-    }
-
-    return `<!DOCTYPE html>
-<html>
-<head>
-    <title>${view.label}</title>
-    <link rel="stylesheet" href="panel.css">
-    ${extraStyle}
-</head>
-<body>
-    <div id="app">
-        ${elementsHTML}
-    </div>
-    <script src="https://extension-files.twitch.tv/helper/v1/twitch-ext.min.js"></script>
-    <script src="viewer.js"></script>
-</body>
-</html>`;
-}
+// removed inline export extension logic (moved to exportExtension.js)
 
 // --- Server Download ---
+// removed inline server download and SSL generation logic (moved to serverDownload.js)
 
-btnServer.addEventListener('click', () => {
-    // UI Feedback
-    const originalText = btnServer.innerHTML;
-    btnServer.innerHTML = '<i class="fas fa-cog fa-spin"></i> Generating...';
-    btnServer.disabled = true;
-
-    // Allow UI to update before blocking operation
-    setTimeout(async () => {
-        try {
-            const zip = new JSZip();
-
-            // 1. Generate Self-Signed Certs (Client-side)
-            const ssl = generateSSLCert();
-            zip.file("localhost.key", ssl.key);
-            zip.file("localhost.crt", ssl.cert);
-
-            const serverJs = `
-const https = require('https');
-const fs = require('fs');
-const path = require('path');
-
-const PORT = 8080;
-
-const mimeTypes = {
-    '.html': 'text/html',
-    '.js': 'text/javascript',
-    '.css': 'text/css',
-    '.json': 'application/json',
-    '.png': 'image/png',
-    '.jpg': 'image/jpg',
-    '.gif': 'image/gif',
-    '.svg': 'image/svg+xml',
-};
-
-// SSL Options
-const options = {
-    key: fs.readFileSync('localhost.key'),
-    cert: fs.readFileSync('localhost.crt')
-};
-
-const requestHandler = (request, response) => {
-    console.log('request ', request.url);
-
-    let filePath = '.' + request.url;
-    if (filePath == './') {
-        filePath = './panel.html';
-    }
-    
-    // Remove query strings
-    filePath = filePath.split('?')[0];
-
-    const extname = String(path.extname(filePath)).toLowerCase();
-    const contentType = mimeTypes[extname] || 'application/octet-stream';
-
-    // Basic CORS headers for Twitch Extension
-    const headers = {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization',
-        'Content-Type': contentType
-    };
-
-    if (request.method === 'OPTIONS') {
-        response.writeHead(204, headers);
-        response.end();
-        return;
-    }
-
-    fs.readFile(filePath, function(error, content) {
-        if (error) {
-            if(error.code == 'ENOENT'){
-                // Try serving 404 or just error
-                response.writeHead(404, headers);
-                response.end('File not found');
-            }
-            else {
-                response.writeHead(500, headers);
-                response.end('Error: '+error.code);
-            }
-        }
-        else {
-            response.writeHead(200, headers);
-            response.end(content, 'utf-8');
-        }
-    });
-};
-
-https.createServer(options, requestHandler).listen(PORT, () => {
-    console.log(\`HTTPS Server running at https://localhost:\${PORT}/\`);
-    console.log(\`To test in Twitch Console:\`);
-    console.log(\`1. Set "Testing Base URI" to https://localhost:\${PORT}/\`);
-    console.log(\`2. Open https://localhost:\${PORT}/ in a browser tab and accept the "Not Secure" warning (because it is self-signed).\`);
-});
-            `;
-
-            const readme = `
-# Local Twitch Extension Server (HTTPS)
-
-This server uses auto-generated self-signed certificates to run locally over HTTPS, which is required for many Twitch Extension features.
-
-## Setup
-1. Unzip all files.
-2. Install Node.js (https://nodejs.org/).
-3. Open a terminal in this folder.
-4. Run: \`node server.js\`
-
-## Important
-- **Browser Warning**: When you first visit \`https://localhost:8080\`, your browser will warn you that the connection is not secure. This is normal because the certificate is self-generated. You must click "Advanced" -> "Proceed to localhost" (or similar) to allow the assets to load.
-- **Twitch Console**: Set your Extension's "Testing Base URI" to \`https://localhost:8080/\`.
-            `;
-
-            zip.file("server.js", serverJs);
-            zip.file("README.md", readme);
-
-            const content = await zip.generateAsync({ type: "blob" });
-            saveAs(content, "server.zip");
-        
-        } catch (e) {
-            console.error(e);
-            alert("Error generating server: " + e.message);
-        } finally {
-            btnServer.innerHTML = originalText;
-            btnServer.disabled = false;
-        }
-    }, 50); // Small delay to let UI render the spinner
+// Initialize modular features
+setupExport({
+    btnExport,
+    views,
+    saveCurrentViewState,
+    renderElementContent
 });
 
-function generateSSLCert() {
-    // Generate a self-signed cert for localhost using node-forge
-    const keys = forge.pki.rsa.generateKeyPair(2048);
-    const cert = forge.pki.createCertificate();
-    cert.publicKey = keys.publicKey;
-    cert.serialNumber = '01';
-    cert.validity.notBefore = new Date();
-    cert.validity.notAfter = new Date();
-    cert.validity.notAfter.setFullYear(cert.validity.notBefore.getFullYear() + 1); // 1 year validity
-
-    const attrs = [
-        { name: 'commonName', value: 'localhost' },
-        { name: 'countryName', value: 'US' },
-        { shortName: 'ST', value: 'Local' },
-        { name: 'localityName', value: 'TwitchDev' },
-        { name: 'organizationName', value: 'Twitch Extension Builder' },
-        { shortName: 'OU', value: 'Dev' }
-    ];
-
-    cert.setSubject(attrs);
-    cert.setIssuer(attrs);
-    
-    // Extensions
-    cert.setExtensions([
-        { name: 'basicConstraints', cA: true },
-        { name: 'keyUsage', keyCertSign: true, digitalSignature: true, nonRepudiation: true, keyEncipherment: true, dataEncipherment: true },
-        { name: 'extKeyUsage', serverAuth: true, clientAuth: true, codeSigning: true, emailProtection: true, timeStamping: true },
-        { name: 'subjectAltName', altNames: [{ type: 2, value: 'localhost' }] }
-    ]);
-
-    // Sign
-    cert.sign(keys.privateKey, forge.md.sha256.create());
-
-    return {
-        key: forge.pki.privateKeyToPem(keys.privateKey),
-        cert: forge.pki.certificateToPem(cert)
-    };
-}
+setupServerDownload({
+    btnServer
+});
