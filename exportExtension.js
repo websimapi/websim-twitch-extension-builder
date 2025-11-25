@@ -70,6 +70,7 @@ body {
 .teb-text { line-height: 1.4; }
 .teb-image { max-width: 100%; height: auto; display: block; border-radius: 4px; }
 .teb-divider { width: 100%; height: 1px; }
+.teb-iframe { width: 100%; height: 100%; border: none; display: block; }
 .teb-container { border-radius: 4px; height: 100%; box-sizing: border-box; }
         `;
 
@@ -160,6 +161,20 @@ function generateHTMLForView(view) {
                 break;
             case 'divider':
                 inner = `<div class="teb-divider" style="background-color:${escapeAttr(data.color)};margin:${escapeAttr(data.margin)} 0;"></div>`;
+                break;
+            case 'iframe':
+                {
+                    const src = data.src || '';
+                    let isWebSim = false;
+                    try {
+                        const u = new URL(src);
+                        if (/(^|\.)websim\.(ai|com)$/.test(u.hostname)) isWebSim = true;
+                    } catch(e){}
+                    
+                    if (isWebSim) {
+                        inner = `<iframe class="teb-iframe" src="${escapeAttr(src)}"></iframe>`;
+                    }
+                }
                 break;
             default:
                 inner = '';

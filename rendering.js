@@ -1,7 +1,7 @@
 import { appState, incrementId } from './state.js';
 import { applyWrapperLayout } from './layout.js';
 import { addResizeHandles, addDragAndResizeHandlers } from './interactions.js';
-import { notifyProjectChanged } from './utils.js';
+import { notifyProjectChanged, isValidWebSimUrl } from './utils.js';
 
 export function getDefaultData(type) {
     switch(type) {
@@ -10,6 +10,7 @@ export function getDefaultData(type) {
         case 'container': return { bgColor: '#26262c', padding: '10px', radius: '4px' };
         case 'image': return { src: 'https://placehold.co/300x150/9146FF/white?text=Image', alt: 'Placeholder' };
         case 'divider': return { color: '#3a3a3a', margin: '10px' };
+        case 'iframe': return { src: 'https://websim.ai' };
         default: return {};
     }
 }
@@ -46,6 +47,17 @@ export function renderElementContent(wrapper, type, data) {
             content = document.createElement('div');
             content.className = 'teb-divider';
             Object.assign(content.style, { backgroundColor: data.color, marginTop: data.margin, marginBottom: data.margin });
+            break;
+        case 'iframe':
+            if (isValidWebSimUrl(data.src)) {
+                content = document.createElement('iframe');
+                content.className = 'teb-iframe';
+                content.src = data.src;
+            } else {
+                content = document.createElement('div');
+                content.className = 'teb-iframe-placeholder';
+                content.innerHTML = '<span>Invalid WebSim URL</span><small style="opacity:0.7; font-size: 0.7em; margin-top: 4px;">Only *.websim.ai / *.websim.com allowed</small>';
+            }
             break;
     }
     if (content) wrapper.appendChild(content);

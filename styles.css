@@ -602,6 +602,33 @@ body {
     width: 100%;
 }
 
+.teb-iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    display: block;
+}
+
+.teb-iframe-placeholder {
+    width: 100%;
+    height: 100%;
+    background-color: #2a1a1a;
+    color: #ff4f4d;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    text-align: center;
+    padding: 8px;
+    overflow: hidden;
+}
+
+/* Ensure clicks pass through iframe in editor unless interacting */
+.element-wrapper:not(.interact-mode) iframe {
+    pointer-events: none;
+}
+
 /* Live sync status */
 .live-status {
     display: inline-flex;

@@ -49,6 +49,8 @@ export function openModal(wrapper) {
     } else if (type === 'divider') {
         addInput('Color', 'color', props.color, 'color');
         addInput('Margin', 'margin', props.margin);
+    } else if (type === 'iframe') {
+        addInput('WebSim URL', 'src', props.src);
     }
 
     modal.classList.remove('hidden');

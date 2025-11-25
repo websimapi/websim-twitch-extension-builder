@@ -54,6 +54,7 @@ body {
 .teb-text { line-height: 1.4; }
 .teb-image { max-width: 100%; height: auto; display: block; border-radius: 4px; }
 .teb-divider { width: 100%; height: 1px; }
+.teb-iframe { width: 100%; height: 100%; border: none; display: block; }
 .teb-container { border-radius: 4px; height: 100%; min-height: 20px; box-sizing: border-box; }`;
 
 const jsTemplate = `window.twitch = window.Twitch.ext;
@@ -177,6 +178,17 @@ function generateHTMLForView(view) {
                 return \`<div class="teb-wrapper" style="\${layout}"><img class="teb-image" src="\${escapeAttribute(data.src || '')}" alt="\${escapeAttribute(data.alt || '')}" /></div>\`;
             case 'divider':
                 return \`<div class="teb-wrapper" style="\${layout}"><div class="teb-divider" style="background-color:\${escapeAttribute(data.color)};margin:\${escapeAttribute(data.margin)} 0;"></div></div>\`;
+            case 'iframe':
+                const src = data.src || '';
+                let isWebSim = false;
+                try {
+                    const u = new URL(src);
+                    if (/(^|\\.)websim\\.(ai|com)$/.test(u.hostname)) isWebSim = true;
+                } catch(e){}
+                if (isWebSim) {
+                    return \`<div class="teb-wrapper" style="\${layout}"><iframe class="teb-iframe" src="\${escapeAttribute(src)}"></iframe></div>\`;
+                }
+                return '';
             default:
                 return '';
         }
